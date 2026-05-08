@@ -1,8 +1,7 @@
 from database.queries import DatabaseManager
 
-from src.nlp.keyphrase import Keyberts
+from src.nlp.extraction.keyword_extraction import KeywordExtractor
 from src.llm.groq_provider import GroqProvider
-from src.core.logging import logger
 from src.core.model_loader import load_embedding_model
 
 # Load embedding model on startup
@@ -10,16 +9,13 @@ embedding_model = load_embedding_model("miniLM")
 
 class DocumentStore:
     def __init__(self):
-        logger.info("Initializing DocumentStore")
         self.cursor = DatabaseManager()
 
         self.llmGroq = GroqProvider()
         self.embedding = embedding_model
-        self.keyberts = Keyberts()
-        logger.info("DocumentStore initialized successfully")
+        self.keyword_extractor = KeywordExtractor()
 
     def save(self, text: str):
-        logger.info(f"Saving document (length: {len(text)})")
         task_id = self.cursor.execute("""
             INSERT INTO tasks (name)
             VALUES (%s)
@@ -27,19 +23,15 @@ class DocumentStore:
         """, ("task",))
         
         task_id = task_id[0]
-        logger.debug(f"Task created with ID: {task_id}")
 
-        logger.debug("Generating embedding")
         vector = self.embedding.encode(text).tolist()
 
         self.cursor.execute("""
             INSERT INTO documents (task_id, text, embedding, source)
             VALUES (%s, %s, %s, %s);
         """, (task_id, text, vector, "upload"))
-        logger.debug("Document inserted")
 
-        logger.info("Extracting keywords and classification")
-        keyword_data = self.keyberts.response(text)
+        keyword_data = self.keyword_extractor.response(text)
 
         self.cursor.execute("""
             INSERT INTO results (task_id, keywords, category)
@@ -49,17 +41,14 @@ class DocumentStore:
             keyword_data["keywords"],
             keyword_data["category"],
         ))
-        logger.info(f"Document saved successfully. Category: {keyword_data['category']}, Keywords: {len(keyword_data['keywords'])}")
 
         return task_id
 
     def search(self, query: str):
-        logger.info(f"Searching for: {query}")
-        keyword_data = self.keyberts.response(query)
+        keyword_data = self.keyword_extractor.response(query)
 
         keywords = keyword_data["keywords"]
         category = keyword_data["category"]
-        logger.debug(f"Query keywords: {keywords}, category: {category}")
 
         embedding = self.embedding.encode(query).tolist()
 
@@ -68,7 +57,6 @@ class DocumentStore:
             category=category,
             embedding=embedding
         )
-        logger.debug(f"Found {len(context) if context else 0} relevant documents")
 
         prompt = f"""
             You are an AI assistant.
@@ -81,12 +69,10 @@ class DocumentStore:
             Question:
             {query}
 
-            Answ
+            Answer:
         """
 
-        logger.info("Generating response using LLM")
         result = self.llmGroq.generate(prompt)
-        logger.info("Response generated successfully")
         return result
 
     def filter(self, keywords=None, category=None, embedding=None):

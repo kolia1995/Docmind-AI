@@ -1,5 +1,4 @@
 import os
-from src.core.logging import logger
 from sentence_transformers import SentenceTransformer
 from transformers import pipeline
 
@@ -30,3 +29,11 @@ def load_model(model_name: str, model_type: str):
 
     _model_cache[cache_key] = model
     return model
+
+def load_embedding_model(model_name: str):
+    """Load embedding model (SentenceTransformer)"""
+    return load_model(model_name, "embedding")
+
+def load_classifier_model(model_name: str):
+    """Load classifier model (zero-shot classification)"""
+    return load_model(model_name, "classifier")

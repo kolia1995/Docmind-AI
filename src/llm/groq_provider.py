@@ -1,5 +1,4 @@
 from src.core.settings import settings
-from src.core.logging import logger
 from groq import Groq
 import time
 
@@ -15,7 +14,6 @@ class GroqProvider:
         rate_limit_per_minute: int = 60,
     ):
         if not api_key:
-            logger.error("Missing Groq API key")
             raise ValueError("Missing Groq API key")
 
         self.model_name = model_name
@@ -24,16 +22,11 @@ class GroqProvider:
         self.top_p = top_p
 
         self.client = Groq(api_key=api_key)
-        logger.info(f"GroqProvider initialized with model: {model_name}")
 
         self.usage_status = {"requests": 0, "tokens_used": 0}
 
-        self.logger = logger
-
         self.cache_enabled = cache_enabled
         self.cache = {}
-        if cache_enabled:
-            logger.debug("Cache enabled for LLM responses")
 
         self.rate_limit_per_minute = rate_limit_per_minute
         self.last_call_timestamp = 0
@@ -60,15 +53,11 @@ class GroqProvider:
             self.cache[prompt] = response
 
     def generate(self, prompt: str):
-        logger.debug(f"Generating response for prompt (length: {len(prompt)})")
         self._rate_limit()
 
         cached = self._cache_lookup(prompt)
         if cached:
-            logger.debug("Returning cached response")
             return cached
-
-        logger.info("Calling Groq API for new response")
         response = self.client.chat.completions.create(
             model=self.model_name,
             messages=[{"role": "user", "content": prompt}],
@@ -78,12 +67,10 @@ class GroqProvider:
         )
 
         text = response.choices[0].message.content
-        logger.debug(f"Response received (length: {len(text)})")
 
         self._cache_store(prompt, text)
 
         self.usage_status["requests"] += 1
         self.usage_status["tokens_used"] += len(prompt) + len(text)
-        logger.debug(f"Usage stats - Requests: {self.usage_status['requests']}, Tokens: {self.usage_status['tokens_used']}")
 
         return text

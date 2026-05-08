@@ -86,7 +86,7 @@ curl -X POST "http://127.0.0.1:8000/search" \
 ```
 src/api/         → FastAPI endpoints
 src/core/        → Logging, settings, model loader
-src/nlp/         → Text processing (classifier, keyphrase)
+src/nlp/         → NLP pipeline (classification, extraction, ingestion)
 src/llm/         → Groq LLM integration
 src/storage/     → Document store (PostgreSQL + vectors)
 database/        → Schema (SQL)
