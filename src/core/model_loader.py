@@ -4,25 +4,25 @@ from transformers import pipeline
 
 _model_cache = {}
 
-def get_model_source(model_name: str) -> str:
-    project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-    local_path = os.path.join(project_root, "models", model_name)
-
-    return local_path if os.path.exists(local_path) else model_name
-
 def load_model(model_name: str, model_type: str):
     cache_key = f"{model_type}_{model_name}"
 
     if cache_key in _model_cache:
         return _model_cache[cache_key]
 
-    source = get_model_source(model_name)
+    # 🔥 FIX: тільки правильні HF моделі
+    HF_MODELS = {
+        "embedding": "sentence-transformers/all-MiniLM-L6-v2",
+        "classifier": "facebook/bart-large-mnli"
+    }
 
     if model_type == "embedding":
+        source = HF_MODELS["embedding"]
         model = SentenceTransformer(source)
 
     elif model_type == "classifier":
-        model = pipeline("zero-shot-classification", model=source, tokenizer=source)
+        source = HF_MODELS["classifier"]
+        model = pipeline("zero-shot-classification", model=source)
 
     else:
         raise ValueError("Invalid model type")
@@ -30,10 +30,8 @@ def load_model(model_name: str, model_type: str):
     _model_cache[cache_key] = model
     return model
 
-def load_embedding_model(model_name: str):
-    """Load embedding model (SentenceTransformer)"""
-    return load_model(model_name, "embedding")
+def load_embedding_model(model_name: str = None):
+    return load_model(model_name or "default", "embedding")
 
-def load_classifier_model(model_name: str):
-    """Load classifier model (zero-shot classification)"""
-    return load_model(model_name, "classifier")
+def load_classifier_model(model_name: str = None):
+    return load_model(model_name or "default", "classifier")

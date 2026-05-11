@@ -1,6 +1,7 @@
 from src.core.settings import settings
 from groq import Groq
 import time
+from typing import Optional
 
 class GroqProvider:
     def __init__(
@@ -8,20 +9,22 @@ class GroqProvider:
         max_tokens: int = 2048,
         temperature: float = 0.7,
         top_p: float = 0.9,
-        model_name: str = settings.LLM_GROQ_NAME,
-        api_key: str = settings.LLM_GROQ_KEY,
+        model_name: str = "llama-3.1-8b-instant",
+        api_key: Optional[str] = None,
         cache_enabled: bool = True,
         rate_limit_per_minute: int = 60,
     ):
-        if not api_key:
+        resolved_api_key = api_key or settings.LLM_GROQ_KEY
+
+        if not resolved_api_key:
             raise ValueError("Missing Groq API key")
 
-        self.model_name = model_name
+        self.model_name = settings.LLM_GROQ_NAME or model_name
         self.max_tokens = max_tokens
         self.temperature = temperature
         self.top_p = top_p
 
-        self.client = Groq(api_key=api_key)
+        self.client = Groq(api_key=resolved_api_key)
 
         self.usage_status = {"requests": 0, "tokens_used": 0}
 

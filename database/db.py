@@ -3,11 +3,11 @@ from psycopg2 import pool
 connection_pool = pool.SimpleConnectionPool(
     minconn=1,
     maxconn=10,
-    dbname="db",
+    dbname="postgres",
     user="postgres",
-    password="root",
+    password="postgres",
     host="localhost",
-    port="5433"
+    port="5332"
 )
 
 def get_connection():

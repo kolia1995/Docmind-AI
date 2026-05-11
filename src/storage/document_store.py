@@ -1,102 +1,60 @@
-from database.queries import DatabaseManager
+import ast
+import numpy as np
 
-from src.nlp.extraction.keyword_extraction import KeywordExtractor
+from database.queries import DatabaseManager
 from src.llm.groq_provider import GroqProvider
 from src.core.model_loader import load_embedding_model
+from src.nlp.classification.intent_classifier import IntentClassifier
 
-# Load embedding model on startup
+
 embedding_model = load_embedding_model("miniLM")
 
 class DocumentStore:
     def __init__(self):
-        self.cursor = DatabaseManager()
-
+        self.db = DatabaseManager()
         self.llmGroq = GroqProvider()
+        self.classifier = IntentClassifier()
         self.embedding = embedding_model
-        self.keyword_extractor = KeywordExtractor()
+
 
     def save(self, text: str):
-        task_id = self.cursor.execute("""
-            INSERT INTO tasks (name)
-            VALUES (%s)
-            RETURNING id;
-        """, ("task",))
-        
-        task_id = task_id[0]
+        vector = np.array(self.embedding.encode(text), dtype="float32").tolist()
+        category = self.classifier.classify(text)
 
-        vector = self.embedding.encode(text).tolist()
-
-        self.cursor.execute("""
-            INSERT INTO documents (task_id, text, embedding, source)
-            VALUES (%s, %s, %s, %s);
-        """, (task_id, text, vector, "upload"))
-
-        keyword_data = self.keyword_extractor.response(text)
-
-        self.cursor.execute("""
-            INSERT INTO results (task_id, keywords, category)
+        self.db.execute("""
+            INSERT INTO documents (text, category, embedding)
             VALUES (%s, %s, %s);
-        """, (
-            task_id,
-            keyword_data["keywords"],
-            keyword_data["category"],
-        ))
+        """, (text, category, vector))
 
-        return task_id
+        return True
 
-    def search(self, query: str):
-        keyword_data = self.keyword_extractor.response(query)
+    def search(self, text: str):
+        query_vector = np.array(self.embedding.encode(text), dtype="float32")
+        category = self.classifier.classify(text)
 
-        keywords = keyword_data["keywords"]
-        category = keyword_data["category"]
+        rows = self.db.fetchall("""
+            SELECT text, embedding
+            FROM documents
+            WHERE category = %s
+            LIMIT 5;
+        """, (category,))
 
-        embedding = self.embedding.encode(query).tolist()
+        best_text = ""
+        best_score = -1
 
-        context = self.filter(
-            keywords=keywords,
-            category=category,
-            embedding=embedding
-        )
+        for db_text, embedding in rows:
 
-        prompt = f"""
-            You are an AI assistant.
+            if isinstance(embedding, str):
+                embedding = ast.literal_eval(embedding)
 
-            Use ONLY the context below.
+            db_vector = np.array(embedding, dtype="float32")
 
-            Context:
-            {context}
+            score = np.dot(query_vector, db_vector) / (
+                np.linalg.norm(query_vector) * np.linalg.norm(db_vector)
+            )
 
-            Question:
-            {query}
+            if score > best_score:
+                best_score = score
+                best_text = db_text
 
-            Answer:
-        """
-
-        result = self.llmGroq.generate(prompt)
-        return result
-
-    def filter(self, keywords=None, category=None, embedding=None):
-        query = """
-            SELECT d.text
-            FROM documents d
-            JOIN results r ON d.task_id = r.task_id
-            WHERE 1=1
-        """
-        params = []
-
-        if category:
-            query += " AND r.category = %s"
-            params.append(category)
-
-        if keywords:
-            query += " AND r.keywords && %s"
-            params.append(keywords)
-
-        if embedding is not None:
-            query += " ORDER BY d.embedding <-> %s::vector"
-            params.append(embedding)
-
-        query += " LIMIT 10"
-
-        rows = self.cursor.fetchall(query, tuple(params))
-        return [r[0] for r in rows]
+        return best_text

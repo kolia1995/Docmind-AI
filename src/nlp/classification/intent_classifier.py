@@ -1,14 +1,16 @@
-from src.core.model_loader import load_classifier_model
+import re
+from transformers import pipeline
 
 class IntentClassifier:
-    def __init__(
-        self,
-        model_name: str = "bart-mnli",
-        labels: list = None,
-    ):
-        self.pipeline = load_classifier_model(model_name)
 
-        self.labels = labels or [
+    def __init__(self):
+
+        self.model = pipeline(
+            "zero-shot-classification",
+            model="facebook/bart-large-mnli"
+        )
+
+        self.labels = [
             "technology",
             "business",
             "sports",
@@ -27,26 +29,65 @@ class IntentClassifier:
             "other"
         ]
 
-    def classify(self, text: str):
-        if not text or not text.strip():
-            return {"label": "other", "score": 0.0}
+    def split_text(self, text, max_chars=800):
 
-        try:
-            result = self.pipeline(
-                text,
-                candidate_labels=self.labels
-            )
+        sentences = re.split(r'(?<=[.!?])\s+', text)
 
-            labels = result.get("labels", [])
-            scores = result.get("scores", [])
+        chunks = []
+        current = ""
 
-            if not labels or not scores:
-                return {"label": "other", "score": 0.0}
+        for sentence in sentences:
 
-            return {
-                "label": labels[0],
-                "score": float(scores[0])
-            }
+            if len(current) + len(sentence) < max_chars:
+                current += " " + sentence
+            else:
+                chunk = current.strip()
+                if chunk:
+                    chunks.append(chunk)
+                current = sentence
 
-        except Exception as e:
-            return {"label": "other", "score": 0.0}
+        if current:
+            chunk = current.strip()
+            if chunk:
+                chunks.append(chunk)
+
+        return chunks
+
+    def classify_chunk(self, chunk):
+        
+        if not chunk or not chunk.strip():
+            return {"labels": [], "scores": []}
+
+        result = self.model(
+            chunk,
+            candidate_labels=self.labels
+        )
+
+        return {
+            "labels": result["labels"],
+            "scores": result["scores"]
+        }
+
+    def classify(self, text):
+
+        chunks = self.split_text(text)
+        
+        if not chunks:
+            return "other"
+
+        scores = {}
+
+        for chunk in chunks:
+
+            result = self.classify_chunk(chunk)
+
+            for label, score in zip(result["labels"], result["scores"]):
+
+                scores[label] = scores.get(label, 0) + score
+        
+        if not scores:
+            return "other"
+
+        final_class = max(scores, key=scores.get)
+
+        return final_class
